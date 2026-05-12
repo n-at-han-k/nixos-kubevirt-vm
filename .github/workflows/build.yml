@@ -18,18 +18,15 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Build qcow2 image
-        run: nix build .#qcow2 --print-build-logs
+        run: nix build .#qcow2 --out-link result-qcow2 --print-build-logs
 
       - name: Build manifest
-        run: nix build .#manifest --print-build-logs
+        run: nix build .#manifest --out-link result-manifest --print-build-logs
 
       - name: Prepare artifacts
         run: |
-          cp -L result nixos-dev.qcow2
-          # Rebuild manifest pointed at this specific release tag
-          # (the default already points at /releases/latest/download/)
-          nix build .#manifest --print-build-logs
-          cp -L result dev-vm.yaml
+          cp -L result-qcow2 nixos-dev.qcow2
+          cp -L result-manifest dev-vm.yaml
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
