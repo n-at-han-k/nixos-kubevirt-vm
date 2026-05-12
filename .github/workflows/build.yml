@@ -1,0 +1,52 @@
+name: Build NixOS qcow2 image
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # needed for gh release create
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build qcow2 image
+        run: nix build .#qcow2 --print-build-logs
+
+      - name: Build manifest
+        run: nix build .#manifest --print-build-logs
+
+      - name: Prepare artifacts
+        run: |
+          cp -L result nixos-dev.qcow2
+          # Rebuild manifest pointed at this specific release tag
+          # (the default already points at /releases/latest/download/)
+          nix build .#manifest --print-build-logs
+          cp -L result dev-vm.yaml
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            nixos-dev.qcow2 \
+            dev-vm.yaml
+
+      - name: Upload artifacts (non-tag builds)
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: nixos-dev-vm
+          path: |
+            nixos-dev.qcow2
+            dev-vm.yaml
