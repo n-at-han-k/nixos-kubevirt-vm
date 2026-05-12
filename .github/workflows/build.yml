@@ -25,7 +25,7 @@ jobs:
 
       - name: Prepare artifacts
         run: |
-          cp result-qcow2/*.qcow2 nixos-dev.qcow2
+          nix shell nixpkgs#qemu-utils -c qemu-img convert -c -O qcow2 result-qcow2/*.qcow2 nixos-dev.qcow2
           cp -L result-manifest dev-vm.yaml
 
       - name: Create GitHub Release
