@@ -9,6 +9,9 @@
 
   services.qemuGuest.enable = true;
 
+  # Login prompt on serial console (so `virtctl console dev` works)
+  systemd.services."serial-getty@ttyS0".enable = true;
+
   users.users.nathan = {
     isNormalUser = true;
     extraGroups = [ "wheel" ];
@@ -39,5 +42,5 @@
     git vim tmux ripgrep fd htop
   ];
 
-  system.stateVersion = "25.05";
+  system.stateVersion = "25.11";
 }
