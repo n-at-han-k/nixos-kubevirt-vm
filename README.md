@@ -83,6 +83,129 @@ kubectl apply -f result
 
 Update `imageUrl` in `flake.nix` to point at wherever you're hosting the image.
 
+## Injecting SSH keys into a pre-built image
+
+If you're using a qcow2 from a CI release and didn't bake your key in at build time, there are several ways to get your SSH key into the VM.
+
+### Option 1: Kubernetes Secret + cloud-init disk (recommended)
+
+KubeVirt supports attaching a `cloudInitNoCloud` disk. Create a Secret with your key and wire it into the VM spec.
+
+1. Create the Secret:
+
+   ```bash
+   kubectl create secret generic dev-ssh-key \
+     --from-literal=userdata="$(cat <<'EOF'
+   #cloud-config
+   users:
+     - name: nathan
+       ssh_authorized_keys:
+         - ssh-ed25519 AAAA...your_actual_key... nathan@macair
+   EOF
+   )"
+   ```
+
+2. Add a cloud-init disk to the VirtualMachine spec (in `flake.nix` or by patching the manifest):
+
+   ```yaml
+   spec:
+     template:
+       spec:
+         domain:
+           devices:
+             disks:
+               # ... existing disks ...
+               - name: cloudinit
+                 disk: { bus: virtio }
+         volumes:
+           # ... existing volumes ...
+           - name: cloudinit
+             cloudInitNoCloud:
+               secretRef:
+                 name: dev-ssh-key
+   ```
+
+   NixOS needs `services.cloud-init.enable = true;` in `configuration.nix` for this to work. Add it before building, or use Option 2 if you're working with an image that doesn't have cloud-init.
+
+### Option 2: Mount a Secret as an extra disk and use a startup script
+
+If you don't want cloud-init in the image, you can mount a ConfigMap/Secret as a disk and have a systemd service read the key on boot.
+
+1. Create a ConfigMap with your public key:
+
+   ```bash
+   kubectl create configmap dev-ssh-pubkey \
+     --from-file=authorized_keys=$HOME/.ssh/id_ed25519.pub
+   ```
+
+2. Add a `configMap` volume to the VM and a systemd unit in `configuration.nix` to copy it:
+
+   ```yaml
+   # In the VirtualMachine manifest, add to volumes:
+   - name: ssh-pubkey
+     configMap:
+       name: dev-ssh-pubkey
+
+   # And to devices.disks:
+   - name: ssh-pubkey
+     disk: { bus: virtio }
+   ```
+
+   ```nix
+   # In configuration.nix — mount the config disk and install the key
+   systemd.services.install-ssh-key = {
+     wantedBy = [ "multi-user.target" ];
+     after = [ "local-fs.target" ];
+     serviceConfig.Type = "oneshot";
+     script = ''
+       mkdir -p /home/nathan/.ssh
+       cp /mnt/ssh-pubkey/authorized_keys /home/nathan/.ssh/authorized_keys
+       chown -R nathan:users /home/nathan/.ssh
+       chmod 700 /home/nathan/.ssh
+       chmod 600 /home/nathan/.ssh/authorized_keys
+     '';
+   };
+
+   fileSystems."/mnt/ssh-pubkey" = {
+     device = "/dev/disk/by-id/virtio-ssh-pubkey";
+     fsType = "iso9660";
+     options = [ "ro" "nofail" ];
+   };
+   ```
+
+### Option 3: virtctl SSH access (no key injection needed)
+
+If you just need quick access and have `virtctl` on your path:
+
+```bash
+# Uses the Kubernetes API — no SSH key in the image required
+virtctl ssh --local-ssh=false nathan@dev
+
+# Or forward a port and SSH normally
+virtctl port-forward dev 2222:22 &
+ssh -p 2222 nathan@localhost
+```
+
+Note: `virtctl ssh --local-ssh=false` uses the guest agent, which requires `services.qemuGuest.enable = true;` (already set in this repo's `configuration.nix`).
+
+### Option 4: Patch the qcow2 directly with guestfish
+
+If you have a downloaded qcow2 and want to inject a key before importing:
+
+```bash
+# Requires libguestfs
+guestfish --rw -a nixos-dev.qcow2 -i <<'EOF'
+  mkdir-p /home/nathan/.ssh
+  write /home/nathan/.ssh/authorized_keys "ssh-ed25519 AAAA...your_key... nathan@macair\n"
+  chown 1000 100 /home/nathan/.ssh
+  chown 1000 100 /home/nathan/.ssh/authorized_keys
+  chmod 0700 /home/nathan/.ssh
+  chmod 0600 /home/nathan/.ssh/authorized_keys
+EOF
+```
+
+Then serve the patched image and deploy as normal.
+
 ## Connecting to the VM
 
 ```bash
