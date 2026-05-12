@@ -12,12 +12,12 @@
   # Login prompt on serial console (so `virtctl console dev` works)
   systemd.services."serial-getty@ttyS0".enable = true;
 
-  users.users.nathan = {
+  users.users.snowman = {
     isNormalUser = true;
     extraGroups = [ "wheel" ];
     openssh.authorizedKeys.keys = [
       # TODO: replace with your actual public key
-      "ssh-ed25519 AAAA...your_key... nathan@macair"
+      "ssh-ed25519 AAAA...your_key... snowman@north-pole"
     ];
   };
 
