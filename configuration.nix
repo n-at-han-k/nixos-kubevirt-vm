@@ -22,16 +22,16 @@
   security.sudo.wheelNeedsPassword = false;
 
   # Auto-format the second disk (/dev/vdb) on first boot, then mount it.
-  systemd.services.format-data = {
-    wantedBy = [ "data.mount" ];
-    before   = [ "data.mount" ];
-    unitConfig.ConditionPathExists = "!/dev/disk/by-label/data";
+  systemd.services.format-home = {
+    wantedBy = [ "home.mount" ];
+    before   = [ "home.mount" ];
+    unitConfig.ConditionPathExists = "!/dev/disk/by-label/home";
     serviceConfig.Type = "oneshot";
-    script = "${pkgs.e2fsprogs}/bin/mkfs.ext4 -L data /dev/vdb";
+    script = "${pkgs.e2fsprogs}/bin/mkfs.ext4 -L home /dev/vdb";
   };
 
-  fileSystems."/data" = {
-    device  = "/dev/disk/by-label/data";
+  fileSystems."/home" = {
+    device  = "/dev/disk/by-label/home";
     fsType  = "ext4";
     options = [ "nofail" ];
   };
